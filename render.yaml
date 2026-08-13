@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: dard-e-driver
+    runtime: static
+    buildCommand: ""
+    staticPublishPath: .
+    autoDeploy: true
