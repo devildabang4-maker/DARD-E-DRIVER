@@ -1,25 +1,61 @@
-const songs=[
-{title:'Pehla Nasha',artist:'Udit Narayan · Sadhana Sargam',mood:'Saloon Classics',youtube:'ZYotlBxpM3Q',duration:'04:54'},
-{title:'Tujhe Dekha To',artist:'Kumar Sanu · Lata Mangeshkar',mood:'Saloon Classics',youtube:'EYA-aTnbKIQ',duration:'05:03'},
-{title:'Aankhon Se Tune Kya Keh Diya',artist:'Kumar Sanu · Alka Yagnik',mood:'Desi Sunday',youtube:'4GQU2aaOXxM',duration:'05:10'},
-{title:'Ghar Se Nikalte Hi',artist:'Udit Narayan',mood:'Highway Raat',youtube:'',duration:'05:00'},
-{title:'Do Dil Mil Rahe Hain',artist:'Kumar Sanu',mood:'90s Dard',youtube:'',duration:'05:47'},
-{title:'Humko Sirf Tumse Pyaar Hai',artist:'Kumar Sanu · Alka Yagnik',mood:'90s Dard',youtube:'',duration:'06:04'},
-{title:'Yeh Kaali Kaali Aankhen',artist:'Kumar Sanu',mood:'Highway Raat',youtube:'',duration:'07:02'},
-{title:'Kaho Naa Pyaar Hai',artist:'Udit Narayan · Alka Yagnik',mood:'Desi Sunday',youtube:'',duration:'06:55'}
-];
-let current=0,playing=false,yt=null,shuffle=false,repeat=false,filtered=songs;
-const $=id=>document.getElementById(id), title=$('title'),artist=$('artist'),play=$('play');
-function render(list=filtered){filtered=list;$('queueCount').textContent=String(list.length).padStart(2,'0');$('list').innerHTML=list.map((s,i)=>`<div class="queue-item ${songs.indexOf(s)===current?'active':''}" data-i="${songs.indexOf(s)}"><span class="qnum">${String(i+1).padStart(2,'0')}</span><div class="qcover">♪</div><div><div class="qtitle">${s.title}</div><div class="qartist">${s.artist}</div></div><span class="qtime">${s.youtube?s.duration:'ON YOUTUBE'}</span><button class="qplay">${songs.indexOf(s)===current&&playing?'❚❚':'▶'}</button></div>`).join('');document.querySelectorAll('.queue-item').forEach(x=>x.onclick=e=>{if(e.target.classList.contains('qplay'))e.stopPropagation();load(+x.dataset.i,true)});}
-function load(i,auto=false){current=(i+songs.length)%songs.length;const s=songs[current];title.textContent=s.title;artist.textContent=s.artist;$('duration').textContent=s.duration;$('time').textContent='0:00';$('seek').value=0;$('cover').innerHTML='<span>♪</span>';if(yt&&s.youtube){yt.loadVideoById(s.youtube);if(auto)yt.playVideo();playing=auto;$('stationStatus').textContent=auto?'LIVE · '+s.mood.toUpperCase():'READY TO DRIVE'}else{playing=false;$('stationStatus').textContent='YOUTUBE LINK REQUIRED';}play.textContent=playing?'❚❚':'▶';render(filtered);}
-function next(){if(repeat){load(current,true);return}if(shuffle){let n=current;while(n===current&&songs.length>1)n=Math.floor(Math.random()*songs.length);load(n,true)}else load(current+1,true)}
-function prev(){load(current-1,true)}
-play.onclick=()=>{const s=songs[current];if(!yt||!s.youtube){if(s.youtube)load(current,true);return}if(playing)yt.pauseVideo();else yt.playVideo()};$('start').onclick=()=>load(current,true);$('next').onclick=next;$('prev').onclick=prev;
-$('shuffle').onclick=()=>{shuffle=!shuffle;$('shuffle').style.color=shuffle?'var(--red)':''};$('repeat').onclick=()=>{repeat=!repeat;$('repeat').style.color=repeat?'var(--red)':''};
-$('volume').oninput=e=>{const v=+e.target.value;$('volValue').textContent=v;if(yt)yt.setVolume(v)};
-$('seek').oninput=e=>{if(yt&&yt.getDuration){const d=yt.getDuration();if(d)yt.seekTo(d*(+e.target.value/100),true)}};
-document.querySelectorAll('.mood-grid button').forEach(b=>b.onclick=()=>{const m=b.dataset.mood;const list=songs.filter(s=>s.mood===m);render(list);$('queue').scrollIntoView({behavior:'smooth'});});
-function tick(){if(yt&&playing&&yt.getCurrentTime){const t=yt.getCurrentTime(),d=yt.getDuration();if(d){$('seek').value=(t/d)*100;$('time').textContent=fmt(t);$('duration').textContent=fmt(d)}}requestAnimationFrame(tick)}
-function fmt(s){s=Math.max(0,Math.floor(s||0));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
-function onYouTubeIframeAPIReady(){yt=new YT.Player('yt',{height:'1',width:'1',videoId:'',playerVars:{playsinline:1,controls:0,rel:0,modestbranding:1},events:{onReady:()=>yt.setVolume(80),onStateChange:e=>{if(e.data===YT.PlayerState.PLAYING){playing=true;$('stationStatus').textContent='LIVE · ON AIR';play.textContent='❚❚';render(filtered)}if(e.data===YT.PlayerState.PAUSED){playing=false;play.textContent='▶';render(filtered)}if(e.data===YT.PlayerState.ENDED)next()}}});requestAnimationFrame(tick)}
-render();
+const STATIONS={
+  road:{name:'90s Road Radio',playlist:'PLmrzljTFgnQD5PO9sgJtdEIadZYVsO7C0',note:'144-track 90s Hindi playlist'},
+  bollywood:{name:'Bollywood Jukebox',playlist:'PLo7WLtfSrhdYYdAM4UWSaUy4xG7_GZqXD',note:'109-track Bollywood playlist'}
+};
+let station=STATIONS.road,currentIndex=0,playing=false,shuffle=false,repeat=false,player=null,ready=false,timer=null;
+const $=id=>document.getElementById(id);
+function format(sec){if(!Number.isFinite(sec)||sec<0)return'0:00';const m=Math.floor(sec/60),s=Math.floor(sec%60).toString().padStart(2,'0');return`${m}:${s}`}
+function updateMeta(){
+ if(!player||!ready)return;
+ const data=player.getVideoData?player.getVideoData():{};
+ if(data&&data.title){$('title').textContent=data.title;$('artist').textContent=data.author||'YouTube Music';}
+ const list=player.getPlaylist?player.getPlaylist():[];
+ const idx=player.getPlaylistIndex?player.getPlaylistIndex():currentIndex;
+ if(typeof idx==='number'&&idx>=0)currentIndex=idx;
+ $('queueCount').textContent=list.length?String(list.length).padStart(3,'0'):'100+';
+ $('stationStatus').textContent=`${station.name} · ${list.length||'100+'} TRACKS`;
+ renderQueue(list);
+}
+function renderQueue(list){
+ const el=$('list');
+ if(!list||!list.length){el.innerHTML='<div class="queue-empty">Tune in to load the radio queue.</div>';return;}
+ const total=Math.min(list.length,12);
+ el.innerHTML=Array.from({length:total},(_,i)=>`<button class="queue-item ${i===currentIndex?'active':''}" data-index="${i}"><span>${String(i+1).padStart(2,'0')}</span><b>${i===currentIndex?'NOW PLAYING':'ROAD TRACK '+String(i+1).padStart(2,'0')}</b><small>${i===currentIndex?'ON AIR · '+station.name:'tap to play'}</small><i>▶</i></button>`).join('');
+ el.querySelectorAll('.queue-item').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.index);player.playVideoAt(i);currentIndex=i;});
+}
+function loadStation(s,autoplay=false){
+ station=s;
+ if(!player||!ready)return;
+ player.loadPlaylist({list:s.playlist,listType:'playlist',index:0,startSeconds:0});
+ player.setLoop(true);
+ if(autoplay)player.playVideo();
+ $('stationStatus').textContent=`${s.name} · LOADING…`;
+}
+function onYouTubeIframeAPIReady(){
+ player=new YT.Player('yt',{
+  height:'200',width:'200',videoId:'',
+  playerVars:{playsinline:1,controls:0,rel:0,iv_load_policy:3},
+  events:{onReady:e=>{ready=true;e.target.setVolume(80);loadStation(station,false);},onStateChange:e=>{
+   if(e.data===YT.PlayerState.PLAYING){playing=true;$('play').textContent='❚❚';$('stationStatus').textContent=`ON AIR · ${station.name}`;updateMeta();startProgress();}
+   if(e.data===YT.PlayerState.PAUSED){playing=false;$('play').textContent='▶';stopProgress();}
+   if(e.data===YT.PlayerState.ENDED){if(repeat)player.playVideoAt(currentIndex);else player.nextVideo();}
+   if(e.data===YT.PlayerState.CUED){updateMeta();}
+  },onError:()=>{$('stationStatus').textContent='THIS TRACK IS UNAVAILABLE · SKIPPING';setTimeout(()=>player.nextVideo(),700)}}
+ });
+}
+function startProgress(){stopProgress();timer=setInterval(()=>{
+ if(!player||!playing)return;
+ const d=player.getDuration(),t=player.getCurrentTime();$('time').textContent=format(t);$('duration').textContent=format(d);$('seek').value=d?Math.round(t/d*100):0;
+ },500)}
+function stopProgress(){if(timer){clearInterval(timer);timer=null}}
+$('start').onclick=()=>{if(!player||!ready)return;player.playVideo();$('player').scrollIntoView({behavior:'smooth',block:'center'});};
+$('play').onclick=()=>{if(!player||!ready)return;if(playing)player.pauseVideo();else player.playVideo();};
+$('next').onclick=()=>{if(player){player.nextVideo();playing=true}};
+$('prev').onclick=()=>{if(player){player.previousVideo();playing=true}};
+$('shuffle').onclick=()=>{shuffle=!shuffle;if(player)player.setShuffle(shuffle);$('shuffle').classList.toggle('on',shuffle)};
+$('repeat').onclick=()=>{repeat=!repeat;if(player)player.setLoop(repeat);$('repeat').classList.toggle('on',repeat)};
+$('volume').oninput=e=>{const v=Number(e.target.value);$('volValue').textContent=v;if(player)player.setVolume(v)};
+$('seek').oninput=e=>{if(player&&player.getDuration())player.seekTo(player.getDuration()*Number(e.target.value)/100,true)};
+window.addEventListener('load',()=>{
+ document.querySelectorAll('.mood-grid button').forEach((b,i)=>b.addEventListener('click',()=>{loadStation(i===0||i===2?STATIONS.road:STATIONS.bollywood,true)}));
+});
