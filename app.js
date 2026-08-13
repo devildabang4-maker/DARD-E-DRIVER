@@ -2,7 +2,7 @@ const STATIONS={
   road:{name:'90s Road Radio',playlist:'PLmrzljTFgnQD5PO9sgJtdEIadZYVsO7C0',note:'144-track 90s Hindi playlist'},
   bollywood:{name:'Bollywood Jukebox',playlist:'PLo7WLtfSrhdYYdAM4UWSaUy4xG7_GZqXD',note:'109-track Bollywood playlist'}
 };
-let station=STATIONS.road,currentIndex=0,playing=false,shuffle=false,repeat=false,player=null,ready=false,timer=null;
+let station=STATIONS.road,currentIndex=0,playing=false,shuffle=false,repeat=true,player=null,ready=false,timer=null;
 const $=id=>document.getElementById(id);
 function format(sec){if(!Number.isFinite(sec)||sec<0)return'0:00';const m=Math.floor(sec/60),s=Math.floor(sec%60).toString().padStart(2,'0');return`${m}:${s}`}
 function updateMeta(){
@@ -19,17 +19,17 @@ function updateMeta(){
 function renderQueue(list){
  const el=$('list');
  if(!list||!list.length){el.innerHTML='<div class="queue-empty">Tune in to load the radio queue.</div>';return;}
- const total=Math.min(list.length,12);
+ const total=Math.min(list.length,15);
  el.innerHTML=Array.from({length:total},(_,i)=>`<button class="queue-item ${i===currentIndex?'active':''}" data-index="${i}"><span>${String(i+1).padStart(2,'0')}</span><b>${i===currentIndex?'NOW PLAYING':'ROAD TRACK '+String(i+1).padStart(2,'0')}</b><small>${i===currentIndex?'ON AIR · '+station.name:'tap to play'}</small><i>▶</i></button>`).join('');
  el.querySelectorAll('.queue-item').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.index);player.playVideoAt(i);currentIndex=i;});
 }
 function loadStation(s,autoplay=false){
  station=s;
  if(!player||!ready)return;
- player.loadPlaylist({list:s.playlist,listType:'playlist',index:0,startSeconds:0});
- player.setLoop(true);
- if(autoplay)player.playVideo();
- $('stationStatus').textContent=`${s.name} · LOADING…`;
+ player.cuePlaylist({list:s.playlist,listType:'playlist',index:0,startSeconds:0});
+ player.setLoop(repeat);
+ $('stationStatus').textContent=`${s.name} · READY`;
+ if(autoplay)setTimeout(()=>player.playVideo(),250);
 }
 function onYouTubeIframeAPIReady(){
  player=new YT.Player('yt',{
@@ -54,6 +54,7 @@ $('next').onclick=()=>{if(player){player.nextVideo();playing=true}};
 $('prev').onclick=()=>{if(player){player.previousVideo();playing=true}};
 $('shuffle').onclick=()=>{shuffle=!shuffle;if(player)player.setShuffle(shuffle);$('shuffle').classList.toggle('on',shuffle)};
 $('repeat').onclick=()=>{repeat=!repeat;if(player)player.setLoop(repeat);$('repeat').classList.toggle('on',repeat)};
+$('repeat').classList.toggle('on',repeat);
 $('volume').oninput=e=>{const v=Number(e.target.value);$('volValue').textContent=v;if(player)player.setVolume(v)};
 $('seek').oninput=e=>{if(player&&player.getDuration())player.seekTo(player.getDuration()*Number(e.target.value)/100,true)};
 window.addEventListener('load',()=>{
